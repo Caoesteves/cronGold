@@ -2,7 +2,7 @@ import yfinance as yf
 import requests
 import datetime
 
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxs78L44fctQ1aarbq5iY17dFmKS0St2Dh7ykgoJr7hr4douTRV_ntvvmzKDIh15bQM/exec"
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxs78L44fctQ1aarbq5iY17dFmKS0St2Dh7ykgoJr7hr4douTRV_ntvvmzKDlh15bQM/exec"
 
 def get_last_close(ticker):
     try:
@@ -32,5 +32,6 @@ payload = {
 }
 
 response = requests.post(WEBHOOK_URL, json=payload, timeout=30)
+
 print("Status:", response.status_code)
-print("Dados enviados para Google Sheet")
+print("Resposta:", response.text)
