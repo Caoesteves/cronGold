@@ -9,7 +9,7 @@ WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxs78L44fctQ1aarbq5iY17dF
 def get_last_close(ticker: str):
     """Devolve o último preço de fecho disponível."""
     try:
-        hist = yf.Ticker(ticker).history(period="5d")
+        hist = yf.Ticker(ticker).history(period="1d", interval="5m")
         if hist.empty or "Close" not in hist.columns:
             return None
         closes = hist["Close"].dropna()
