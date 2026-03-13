@@ -16,20 +16,29 @@ def get_last_close(ticker):
 gold = get_last_close("4GLD.DE")
 miners = get_last_close("G2X.DE")
 oil = get_last_close("OD7F.DE")
+usd = get_last_close("DX-Y.NYB")
+us10y = get_last_close("^TNX")
 
 if gold is None or miners is None:
     raise ValueError("Não foi possível obter dados de 4GLD.DE ou G2X.DE")
 
 ratio = miners / gold if gold else None
 
-# Para já estes cálculos serão feitos na Sheet, por isso enviamos só placeholders
+# Regra macro simples
+macro_signal = "NEUTRAL"
+if usd is not None and us10y is not None:
+    macro_signal = "NEUTRAL"
+
 payload = {
     "timestamp": datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
     "gold_price": gold,
     "miners_price": miners,
     "oil_price": oil,
     "ratio": ratio,
-    "signal": "update"
+    "signal": "update",
+    "usd_index": usd,
+    "us10y_yield": us10y,
+    "macro_signal": macro_signal
 }
 
 response = requests.post(WEBHOOK_URL, json=payload, timeout=30)
