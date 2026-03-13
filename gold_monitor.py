@@ -1,8 +1,10 @@
 import yfinance as yf
 import requests
 import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxs78L44fctQ1aarbq5iY17dFmKS0St2Dh7ykgoJr7hr4douTRV_ntvvmzKDlh15bQM/exec"
+WEBHOOK_URL = "COLE_AQUI_O_SEU_WEBHOOK"
 
 def get_last_close(ticker):
     try:
@@ -22,6 +24,7 @@ if gold is None or miners is None:
 
 ratio = miners / gold if gold else None
 
+# Para já estes cálculos serão feitos na Sheet, por isso enviamos só placeholders
 payload = {
     "timestamp": datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
     "gold_price": gold,
