@@ -4,6 +4,7 @@ import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
+
 WEBHOOK_URL = "COLE_AQUI_O_SEU_WEBHOOK"
 
 def get_last_close(ticker):
