@@ -7,7 +7,7 @@ import pandas as pd
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxs78L44fctQ1aarbq5iY17dFmKS0St2Dh7ykgoJr7hr4douTRV_ntvvmzKDlh15bQM/exec"
 
 
-def get_series(ticker: str, period: str = "5d", interval: str = "5m"):
+def get_series(ticker: str, period: str = "6mo", interval: str = "1d"):
     try:
         hist = yf.Ticker(ticker).history(period=period, interval=interval, auto_adjust=False)
         if hist.empty or "Close" not in hist.columns:
@@ -20,9 +20,25 @@ def get_series(ticker: str, period: str = "5d", interval: str = "5m"):
         return None
 
 
-def first_valid_series(tickers, period="5d", interval="5m"):
+def get_series_intraday(ticker: str, period: str = "5d", interval: str = "5m"):
+    try:
+        hist = yf.Ticker(ticker).history(period=period, interval=interval, auto_adjust=False)
+        if hist.empty or "Close" not in hist.columns:
+            return None
+        closes = hist["Close"].dropna()
+        if closes.empty:
+            return None
+        return closes
+    except Exception:
+        return None
+
+
+def first_valid_series(tickers, period="5d", interval="5m", intraday=True):
     for ticker in tickers:
-        s = get_series(ticker, period=period, interval=interval)
+        if intraday:
+            s = get_series_intraday(ticker, period=period, interval=interval)
+        else:
+            s = get_series(ticker, period=period, interval=interval)
         if s is not None and not s.empty:
             return s, ticker
     return None, None
@@ -59,8 +75,8 @@ def calculate_rsi(series, period=14):
 
     rs = avg_gain / avg_loss.replace(0, pd.NA)
     rsi = 100 - (100 / (1 + rs))
-
     value = rsi.iloc[-1]
+
     if pd.isna(value):
         return None
     return float(value)
@@ -79,6 +95,15 @@ def calculate_momentum_20(series):
     return ((last / base) - 1) * 100.0
 
 
+def moving_average(series, window):
+    if series is None or len(series) < window:
+        return None
+    try:
+        return float(series.rolling(window).mean().iloc[-1])
+    except Exception:
+        return None
+
+
 def safe_round(value, digits=4):
     if value is None:
         return ""
@@ -88,24 +113,31 @@ def safe_round(value, digits=4):
 
 
 # -----------------------------
-# ATIVOS PRINCIPAIS
+# SÉRIES INTRADAY PRINCIPAIS
 # -----------------------------
-gold_series, gold_ticker = first_valid_series(["4GLD.DE"], period="5d", interval="5m")
-miners_series, miners_ticker = first_valid_series(["G2X.DE"], period="5d", interval="5m")
+gold_intraday, gold_ticker = first_valid_series(["4GLD.DE"], period="5d", interval="5m", intraday=True)
+miners_intraday, miners_ticker = first_valid_series(["G2X.DE"], period="5d", interval="5m", intraday=True)
 
-# MACRO / AUXILIARES
-oil_series, oil_ticker = first_valid_series(["BZ=F", "CL=F"], period="5d", interval="5m")
-usd_series, usd_ticker = first_valid_series(["DX=F", "DX-Y.NYB"], period="5d", interval="5m")
-us10y_series, us10y_ticker = first_valid_series(["^TNX"], period="5d", interval="5m")
+oil_intraday, oil_ticker = first_valid_series(["BZ=F", "CL=F"], period="5d", interval="5m", intraday=True)
+usd_intraday, usd_ticker = first_valid_series(["DX=F", "DX-Y.NYB"], period="5d", interval="5m", intraday=True)
+us10y_intraday, us10y_ticker = first_valid_series(["^TNX"], period="5d", interval="5m", intraday=True)
 
-gold = last_value(gold_series)
-miners = last_value(miners_series)
-oil = last_value(oil_series)
-usd = last_value(usd_series)
-us10y = last_value(us10y_series)
+# -----------------------------
+# SÉRIES DIÁRIAS PARA REGIME / RISCO
+# -----------------------------
+gold_daily, _ = first_valid_series(["4GLD.DE"], period="6mo", interval="1d", intraday=False)
+miners_daily, _ = first_valid_series(["G2X.DE"], period="6mo", interval="1d", intraday=False)
+sp500_daily, sp500_ticker = first_valid_series(["^GSPC"], period="6mo", interval="1d", intraday=False)
+vix_daily, vix_ticker = first_valid_series(["^VIX"], period="6mo", interval="1d", intraday=False)
 
-usd_prev = prev_value(usd_series)
-us10y_prev = prev_value(us10y_series)
+gold = last_value(gold_intraday)
+miners = last_value(miners_intraday)
+oil = last_value(oil_intraday)
+usd = last_value(usd_intraday)
+us10y = last_value(us10y_intraday)
+
+usd_prev = prev_value(usd_intraday)
+us10y_prev = prev_value(us10y_intraday)
 
 if gold is None or miners is None:
     raise ValueError("Não foi possível obter dados de 4GLD.DE ou G2X.DE")
@@ -115,11 +147,11 @@ ratio = miners / gold if gold else None
 # -----------------------------
 # INDICADORES TÉCNICOS
 # -----------------------------
-rsi_gold = calculate_rsi(gold_series, period=14)
-rsi_miners = calculate_rsi(miners_series, period=14)
+rsi_gold = calculate_rsi(gold_intraday, period=14)
+rsi_miners = calculate_rsi(miners_intraday, period=14)
 
-momentum_gold_20 = calculate_momentum_20(gold_series)
-momentum_miners_20 = calculate_momentum_20(miners_series)
+momentum_gold_20 = calculate_momentum_20(gold_intraday)
+momentum_miners_20 = calculate_momentum_20(miners_intraday)
 
 # -----------------------------
 # MACRO SIGNAL
@@ -136,6 +168,61 @@ if usd is not None and usd_prev is not None and us10y is not None and us10y_prev
         macro_signal = "BEARISH_GOLD"
     else:
         macro_signal = "NEUTRAL"
+
+# -----------------------------
+# GOLD REGIME
+# -----------------------------
+gold_regime = "UNKNOWN"
+score_regime = 0
+
+ma50_gold = moving_average(gold_daily, 50)
+ma200_gold = moving_average(gold_daily, 200)
+gold_daily_last = last_value(gold_daily)
+
+if gold_daily_last is not None and ma50_gold is not None:
+    if ma200_gold is not None and gold_daily_last > ma50_gold > ma200_gold:
+        gold_regime = "BULLISH"
+        score_regime = 2
+    elif ma200_gold is not None and gold_daily_last < ma200_gold:
+        gold_regime = "BEARISH"
+        score_regime = -2
+    else:
+        gold_regime = "NEUTRAL"
+        score_regime = 0
+
+# -----------------------------
+# MINERS LEAD
+# -----------------------------
+miners_lead = "NEUTRAL"
+
+if momentum_gold_20 is not None and momentum_miners_20 is not None:
+    if momentum_miners_20 > momentum_gold_20:
+        miners_lead = "LEADING_UP"
+    elif momentum_miners_20 < momentum_gold_20:
+        miners_lead = "LEADING_DOWN"
+    else:
+        miners_lead = "NEUTRAL"
+
+# -----------------------------
+# CRASH RISK
+# -----------------------------
+crash_risk = "UNKNOWN"
+score_crash = 0
+
+vix_last = last_value(vix_daily)
+sp500_last = last_value(sp500_daily)
+sp500_ma50 = moving_average(sp500_daily, 50)
+
+if vix_last is not None and sp500_last is not None and sp500_ma50 is not None:
+    if vix_last > 30 and sp500_last < sp500_ma50:
+        crash_risk = "HIGH"
+        score_crash = -2
+    elif vix_last > 25:
+        crash_risk = "MODERATE"
+        score_crash = -1
+    else:
+        crash_risk = "LOW"
+        score_crash = 0
 
 # -----------------------------
 # SCORE TÉCNICO
@@ -173,6 +260,7 @@ if momentum_gold_20 is not None and momentum_miners_20 is not None:
     elif momentum_miners_20 < momentum_gold_20:
         score_tecnico_sell += 1
 
+# Ajuste regime e crash no total
 score_total_buy = score_tecnico_buy
 score_total_sell = score_tecnico_sell
 
@@ -180,6 +268,14 @@ if macro_signal == "BULLISH_GOLD":
     score_total_buy += 2
 elif macro_signal == "BEARISH_GOLD":
     score_total_sell += 2
+
+if score_regime > 0:
+    score_total_buy += score_regime
+elif score_regime < 0:
+    score_total_sell += abs(score_regime)
+
+if score_crash < 0:
+    score_total_sell += abs(score_crash)
 
 # -----------------------------
 # PAYLOAD
@@ -202,11 +298,11 @@ payload = {
     "score_tecnico_sell": score_tecnico_sell,
     "score_total_buy": score_total_buy,
     "score_total_sell": score_total_sell,
-    "debug_gold_ticker": gold_ticker or "",
-    "debug_miners_ticker": miners_ticker or "",
-    "debug_oil_ticker": oil_ticker or "",
-    "debug_usd_ticker": usd_ticker or "",
-    "debug_us10y_ticker": us10y_ticker or ""
+    "gold_regime": gold_regime,
+    "miners_lead": miners_lead,
+    "crash_risk": crash_risk,
+    "score_regime": score_regime,
+    "score_crash": score_crash
 }
 
 response = requests.post(WEBHOOK_URL, json=payload, timeout=30)
