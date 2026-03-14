@@ -4,9 +4,7 @@ import requests
 import yfinance as yf
 import pandas as pd
 
-
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxs78L44fctQ1aarbq5iY17dFmKS0St2Dh7ykgoJr7hr4douTRV_ntvvmzKDlh15bQM/exec"
-
 
 def get_series(ticker: str, period: str = "1d", interval: str = "5m") -> pd.Series | None:
     """Devolve a série de fechos do ticker."""
