@@ -6,7 +6,8 @@ import pandas as pd
 
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxs78L44fctQ1aarbq5iY17dFmKS0St2Dh7ykgoJr7hr4douTRV_ntvvmzKDlh15bQM/exec"
 
-def get_series(ticker: str, period: str = "1d", interval: str = "5m"):
+
+def get_series(ticker: str, period: str = "5d", interval: str = "5m"):
     try:
         hist = yf.Ticker(ticker).history(period=period, interval=interval, auto_adjust=False)
         if hist.empty or "Close" not in hist.columns:
@@ -18,13 +19,23 @@ def get_series(ticker: str, period: str = "1d", interval: str = "5m"):
     except Exception:
         return None
 
+
+def first_valid_series(tickers, period="5d", interval="5m"):
+    for ticker in tickers:
+        s = get_series(ticker, period=period, interval=interval)
+        if s is not None and not s.empty:
+            return s, ticker
+    return None, None
+
+
 def last_value(series):
-    if series is None or series.empty:
+    if series is None or len(series) == 0:
         return None
     try:
         return float(series.iloc[-1])
     except Exception:
         return None
+
 
 def prev_value(series):
     if series is None or len(series) < 2:
@@ -33,6 +44,7 @@ def prev_value(series):
         return float(series.iloc[-2])
     except Exception:
         return None
+
 
 def calculate_rsi(series, period=14):
     if series is None or len(series) < period + 1:
@@ -53,32 +65,38 @@ def calculate_rsi(series, period=14):
         return None
     return float(value)
 
+
 def calculate_momentum_20(series):
     if series is None or len(series) < 21:
         return None
+
     base = float(series.iloc[-21])
     last = float(series.iloc[-1])
+
     if base == 0:
         return None
+
     return ((last / base) - 1) * 100.0
+
 
 def safe_round(value, digits=4):
     if value is None:
-        return None
+        return ""
     if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
+        return ""
     return round(value, digits)
 
-# -----------------------------
-# ATIVOS CONSISTENTES COM A SHEET
-# -----------------------------
-gold_series = get_series("4GLD.DE", period="1d", interval="5m")
-miners_series = get_series("G2X.DE", period="1d", interval="5m")
 
-# petróleo / macro
-oil_series = get_series("BZ=F", period="1d", interval="5m") or get_series("CL=F", period="1d", interval="5m")
-usd_series = get_series("DX=F", period="1d", interval="5m")
-us10y_series = get_series("^TNX", period="1d", interval="5m")
+# -----------------------------
+# ATIVOS PRINCIPAIS
+# -----------------------------
+gold_series, gold_ticker = first_valid_series(["4GLD.DE"], period="5d", interval="5m")
+miners_series, miners_ticker = first_valid_series(["G2X.DE"], period="5d", interval="5m")
+
+# MACRO / AUXILIARES
+oil_series, oil_ticker = first_valid_series(["BZ=F", "CL=F"], period="5d", interval="5m")
+usd_series, usd_ticker = first_valid_series(["DX=F", "DX-Y.NYB"], period="5d", interval="5m")
+us10y_series, us10y_ticker = first_valid_series(["^TNX"], period="5d", interval="5m")
 
 gold = last_value(gold_series)
 miners = last_value(miners_series)
@@ -94,13 +112,20 @@ if gold is None or miners is None:
 
 ratio = miners / gold if gold else None
 
+# -----------------------------
+# INDICADORES TÉCNICOS
+# -----------------------------
 rsi_gold = calculate_rsi(gold_series, period=14)
 rsi_miners = calculate_rsi(miners_series, period=14)
 
 momentum_gold_20 = calculate_momentum_20(gold_series)
 momentum_miners_20 = calculate_momentum_20(miners_series)
 
+# -----------------------------
+# MACRO SIGNAL
+# -----------------------------
 macro_signal = "NEUTRAL"
+
 if usd is not None and usd_prev is not None and us10y is not None and us10y_prev is not None:
     usd_change = usd - usd_prev
     us10y_change = us10y - us10y_prev
@@ -112,6 +137,9 @@ if usd is not None and usd_prev is not None and us10y is not None and us10y_prev
     else:
         macro_signal = "NEUTRAL"
 
+# -----------------------------
+# SCORE TÉCNICO
+# -----------------------------
 score_tecnico_buy = 0
 score_tecnico_sell = 0
 
@@ -145,17 +173,17 @@ if momentum_gold_20 is not None and momentum_miners_20 is not None:
     elif momentum_miners_20 < momentum_gold_20:
         score_tecnico_sell += 1
 
-macro_bonus_buy = 0
-macro_bonus_sell = 0
+score_total_buy = score_tecnico_buy
+score_total_sell = score_tecnico_sell
 
 if macro_signal == "BULLISH_GOLD":
-    macro_bonus_buy = 2
+    score_total_buy += 2
 elif macro_signal == "BEARISH_GOLD":
-    macro_bonus_sell = 2
+    score_total_sell += 2
 
-score_total_buy = score_tecnico_buy + macro_bonus_buy
-score_total_sell = score_tecnico_sell + macro_bonus_sell
-
+# -----------------------------
+# PAYLOAD
+# -----------------------------
 payload = {
     "timestamp": datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
     "gold_price": safe_round(gold, 6),
@@ -173,7 +201,12 @@ payload = {
     "score_tecnico_buy": score_tecnico_buy,
     "score_tecnico_sell": score_tecnico_sell,
     "score_total_buy": score_total_buy,
-    "score_total_sell": score_total_sell
+    "score_total_sell": score_total_sell,
+    "debug_gold_ticker": gold_ticker or "",
+    "debug_miners_ticker": miners_ticker or "",
+    "debug_oil_ticker": oil_ticker or "",
+    "debug_usd_ticker": usd_ticker or "",
+    "debug_us10y_ticker": us10y_ticker or ""
 }
 
 response = requests.post(WEBHOOK_URL, json=payload, timeout=30)
