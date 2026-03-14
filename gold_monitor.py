@@ -6,7 +6,7 @@ from datetime import datetime
 # CONFIGURAÇÃO
 # -----------------------------
 
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxxxxxx/exec"
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxs78L44fctQ1aarbq5iY17dFmKS0St2Dh7ykgoJr7hr4douTRV_ntvvmzKDlh15bQM/exec"
 
 TICKERS = {
     "gold": "GC=F",
